@@ -5,11 +5,8 @@
       "runtime": "vercel-python@0.5.2"
     }
   },
-  "builds": [
-    { "src": "next.config.mjs", "use": "@vercel/next" }
-  ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1.py" },
-    { "src": "/(.*)", "dest": "/" }
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
