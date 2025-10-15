@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #__next { height: 100%; }
+body { background: #0f172a; color: #e6eef8; }
+.container { max-width: 900px; margin: 4rem auto; padding: 1rem; }
+.card { background: rgba(255,255,255,0.03); border-radius: 12px; padding: 1rem; }
+button { background: #2563eb; color: white; padding: 0.5rem 1rem; border-radius: 8px; }
+input[type="file"] { color: white; }
+img.output { max-width: 100%; border-radius: 8px; margin-top: 1rem; }
