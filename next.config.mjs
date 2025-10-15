@@ -1,6 +1,7 @@
-import { join } from "path";
 const nextConfig = {
-  experimental: { appDir: true },
   reactStrictMode: true,
+  experimental: {
+    typedRoutes: true
+  }
 };
 export default nextConfig;
