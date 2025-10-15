@@ -1,21 +1,15 @@
 import './globals.css';
-import type { Metadata } from 'next';
+import React from 'react';
 
-export const metadata: Metadata = {
+export const metadata = {
   title: 'ASCII Art Generator',
-  description: 'Convert your text into ASCII art instantly.',
+  description: 'Generate diverse ASCII art styles dynamically!',
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-gray-950 text-gray-100 min-h-screen flex items-center justify-center">
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
