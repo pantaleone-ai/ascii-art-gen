@@ -1,25 +1,27 @@
 # ASCII Art Generator
 
-A lightweight Next.js 15 app that converts text input into ASCII-style art directly in the browser.
+A web app for generating abstract ASCII art, either from uploaded images or procedurally (e.g., waves, noise patterns). Built with Next.js (frontend) and FastAPI (backend), deployed on Vercel.
 
-## 🚀 Tech Stack
-- Next.js 15 (App Router)
-- React 19
-- Tailwind CSS
+## Features
+- Image-to-ASCII conversion with customizable scale, charset, dithering, brightness/contrast.
+- Procedural abstract art generation (no image needed): Styles like waves, radial, noise, terrain.
+- Output as PNG image or plain text ASCII.
+- Supports diversity for character variation, inversion, seeding for reproducibility.
 
-## 🧠 How It Works
-The conversion logic runs client-side using a simple character-mapping algorithm, so no backend or serverless functions are needed.
+## Tech Stack
+- Frontend: Next.js, React, Tailwind CSS, TypeScript
+- Backend: FastAPI (Python), PIL for image processing, NumPy for arrays
+- Deployment: Vercel
 
-## 🪄 Deployment
-Deployed seamlessly on **Vercel** — no configuration required.
+## Setup
+1. Clone the repo: `git clone https://github.com/pantaleone-ai/ascii-art-gen`
+2. Install Node deps: `npm install`
+3. Install Python deps: `pip install -r requirements.txt`
+4. Run dev: `npm run dev` (frontend at http://localhost:3000; backend auto-handled by Vercel in prod)
 
-## 🧰 Commands
-```bash
-npm install
-npm run dev
-npm run build
-npm start
-```
+## Usage
+- Upload an image or select a procedural style.
+- Adjust parameters and generate.
+- View or copy the output.
 
----
-Made with ❤️ and Next.js 15.
+Deployed at: https://ascii-aiart-gen.vercel.app/
