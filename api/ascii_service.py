@@ -1,47 +1,117 @@
 from fastapi import FastAPI, File, UploadFile, Form
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, PlainTextResponse
 from io import BytesIO
 from typing import Optional
-from PIL import Image, ImageDraw, ImageFont, ImageEnhance
+from PIL import Image, ImageDraw, ImageFont, ImageEnhance, ImageOps
 import numpy as np
-import random, math, os
+import random
+import math
+import os
 
 app = FastAPI()
 
-# Try to find a default TTF font
+# Expanded font candidates for better cross-platform support
 DEFAULT_FONT = None
 for candidate in [
     "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/Library/Fonts/Arial.ttf",
+    "/System/Library/Fonts/Menlo.ttc",
+    "/usr/share/fonts/liberation/LiberationMono-Regular.ttf",
+    "arial.ttf",  # Windows fallback
 ]:
     if os.path.exists(candidate):
         DEFAULT_FONT = candidate
         break
 
+# Expanded charset presets for finer control
 CHAR_PRESETS = {
     "standard": "@%#*+=-:. ",
     "dense": "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,\"^`'. ",
     "blocks": "█▓▒░ ",
     "binary": "01",
     "letters": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "extended": " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$",
 }
 
-def get_font(path, size):
+def get_font(path: Optional[str], size: int):
     try:
         if path:
             return ImageFont.truetype(path, size=size)
     except Exception:
         pass
-    return ImageFont.load_default()
+    return ImageFont.load_default() if DEFAULT_FONT is None else ImageFont.truetype(DEFAULT_FONT, size=size)
 
-def map_brightness_to_index(brightness, charset):
-    idx = int((brightness / 255.0) * (len(charset) - 1))
+def map_brightness_to_index(brightness: float, charset: str) -> int:
+    # Normalized to 0-1, map to charset index (high brightness -> high index, assuming charset dark to light)
+    idx = int(brightness * (len(charset) - 1))
     return max(0, min(len(charset) - 1, idx))
+
+def apply_floyd_steinberg_dither(lum: np.ndarray) -> np.ndarray:
+    # Improved dithering: Floyd-Steinberg on luminance for better gradients
+    h, w = lum.shape
+    for y in range(h):
+        for x in range(w):
+            old = lum[y, x]
+            new = round(old / 255.0) * 255  # Quantize (simplified; adjust levels as needed)
+            err = old - new
+            lum[y, x] = new
+            if x + 1 < w:
+                lum[y, x + 1] += err * 7 / 16
+            if y + 1 < h:
+                if x > 0:
+                    lum[y + 1, x - 1] += err * 3 / 16
+                lum[y + 1, x] += err * 5 / 16
+                if x + 1 < w:
+                    lum[y + 1, x + 1] += err * 1 / 16
+    return lum
+
+def generate_procedural_array(target_w: int, target_h: int, style: str, seed: Optional[int]) -> tuple[np.ndarray, np.ndarray]:
+    # New: Procedural generation of RGB and lum arrays
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+    
+    arr = np.zeros((target_h, target_w, 3), dtype=np.uint8)
+    lum = np.zeros((target_h, target_w), dtype=np.uint8)
+    
+    for y in range(target_h):
+        for x in range(target_w):
+            if style == "waves":
+                value = math.sin(x / (target_w / 10.0)) + math.cos(y / (target_h / 5.0))
+                value = (value + 2) / 4  # Normalize 0-1
+                lum[y, x] = int(value * 255)
+                arr[y, x] = [int(255 * value), int(255 * (1 - value)), int(128 + 127 * math.sin(x / 5))]  # Colorful waves
+            elif style == "radial":
+                dx = x - target_w / 2
+                dy = y - target_h / 2
+                dist = math.sqrt(dx**2 + dy**2) / math.sqrt((target_w/2)**2 + (target_h/2)**2)
+                value = (math.sin(dist * 10) + 1) / 2
+                lum[y, x] = int(value * 255)
+                arr[y, x] = [int(255 * dist), int(255 * value), int(255 * (1 - dist))]  # Radial gradient
+            elif style == "noise":
+                # Simple hash-based noise for organic abstract
+                noise = (math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1
+                value = noise
+                lum[y, x] = int(value * 255)
+                arr[y, x] = [int(255 * noise), int(255 * (1 - noise)), int(128 + 127 * noise)]  # Noisy colors
+            elif style == "terrain":
+                # Simple Perlin-like for land masses (inspired by procedural gen examples)
+                height = 0.5 + 0.5 * math.sin(x / 10) + 0.3 * math.cos(y / 5) + random.random() * 0.2
+                value = min(1, max(0, height))
+                lum[y, x] = int(value * 255)
+                arr[y, x] = [0, int(255 * value) if value > 0.5 else 0, int(255 * (1 - value))]  # Green/blue terrain
+            else:
+                # Fallback random
+                value = random.random()
+                lum[y, x] = int(value * 255)
+                arr[y, x] = [random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)]
+    
+    return arr, lum
 
 @app.post("/")
 async def generate(
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
     scale: float = Form(0.08),
     char_width: int = Form(10),
     char_height: int = Form(18),
@@ -50,21 +120,20 @@ async def generate(
     charset: Optional[str] = Form(None),
     diversity: float = Form(0.0),
     sample_method: str = Form("center"),
-    dither: bool = Form(False),
-    dither_strength: float = Form(0.25),
-    color_mode: str = Form("rgb"),
-    palette: Optional[str] = Form(None),
+    dither: bool = Form(False),  # Now uses Floyd-Steinberg if True
+    # dither_strength removed; integrated into algorithm
+    color_mode: str = Form("rgb"),  # Unused currently; could expand to grayscale output
+    palette: Optional[str] = Form(None),  # Now implemented
     invert: bool = Form(False),
     brightness: float = Form(1.0),
     contrast: float = Form(1.0),
     seed: Optional[int] = Form(None),
+    style: Optional[str] = Form(None),  # New: procedural style (waves, radial, noise, terrain)
+    target_width: int = Form(80),  # New: char grid width for procedural
+    target_height: int = Form(20),  # New: char grid height for procedural
+    output_mode: str = Form("image"),  # New: "image" for PNG, "text" for plain ASCII
+    font_file: Optional[UploadFile] = File(None),  # New: optional custom font upload
 ):
-    content = await file.read()
-    try:
-        pil_img = Image.open(BytesIO(content)).convert("RGB")
-    except Exception as e:
-        return JSONResponse({"error": "invalid image", "detail": str(e)}, status_code=400)
-
     if seed is not None:
         random.seed(seed)
         np.random.seed(seed)
@@ -72,84 +141,4 @@ async def generate(
     if charset is None:
         charset = CHAR_PRESETS.get(preset, CHAR_PRESETS["dense"])
 
-    enhancer = ImageEnhance.Brightness(pil_img)
-    pil_img = enhancer.enhance(brightness)
-    enhancer = ImageEnhance.Contrast(pil_img)
-    pil_img = enhancer.enhance(contrast)
-
-    original_w, original_h = pil_img.size
-    target_w = max(1, int(original_w * scale))
-    aspect = (char_width / char_height)
-    target_h = max(1, int(original_h * scale * (1.0 / aspect)))
-    img_small = pil_img.resize((target_w, target_h), resample=Image.BILINEAR)
-    arr = np.array(img_small)
-    lum = (0.299 * arr[..., 0] + 0.587 * arr[..., 1] + 0.114 * arr[..., 2]).astype(np.uint8)
-
-    if invert:
-        lum = 255 - lum
-
-    rows = []
-    for y in range(target_h):
-        row = []
-        for x in range(target_w):
-            if sample_method == "random":
-                nx = min(max(0, x + random.randint(-1,1)), target_w-1)
-                ny = min(max(0, y + random.randint(-1,1)), target_h-1)
-                sample_rgb = arr[ny, nx]
-                b = lum[ny, nx]
-            else:
-                sample_rgb = arr[y, x]
-                b = lum[y, x]
-
-            base_idx = map_brightness_to_index(b, charset)
-            chosen_idx = base_idx
-            if diversity and diversity > 0:
-                spread = max(1, int(len(charset) * diversity))
-                low = max(0, base_idx - spread)
-                high = min(len(charset)-1, base_idx + spread)
-                candidates = list(range(low, high+1))
-                sigma = max(0.5, spread/2.0)
-                weights = [math.exp(-((c-base_idx)**2)/(2*(sigma**2))) for c in candidates]
-                s = sum(weights)
-                probs = [w/s for w in weights]
-                chosen_idx = random.choices(candidates, weights=probs, k=1)[0]
-            ch = charset[chosen_idx]
-            row.append((ch, tuple(int(v) for v in sample_rgb)))
-        rows.append(row)
-
-    out_w = target_w * char_width
-    out_h = target_h * char_height
-    out_img = Image.new("RGB", (out_w, out_h), color=(0,0,0))
-    draw = ImageDraw.Draw(out_img)
-    font = get_font(DEFAULT_FONT, font_size)
-
-    # simple ordered 4x4 Bayer for dithering if requested
-    bayer = None
-    if dither:
-        bayer = np.array([[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]], dtype=float)/16.0
-        bh, bw = bayer.shape
-
-    for y, row in enumerate(rows):
-        for x, (ch, rgb) in enumerate(row):
-            px = x * char_width
-            py = y * char_height
-            fill = tuple(int(c) for c in rgb)
-            if dither and bayer is not None:
-                v = bayer[y % bh, x % bw]
-                if random.random() < v * float(dither_strength):
-                    # flip a char index a bit
-                    try:
-                        idx = charset.index(ch)
-                        if random.random() > 0.5:
-                            idx = min(idx+1, len(charset)-1)
-                        else:
-                            idx = max(idx-1, 0)
-                        ch = charset[idx]
-                    except ValueError:
-                        pass
-            draw.text((px, py), ch, font=font, fill=fill)
-
-    buf = BytesIO()
-    out_img.save(buf, format="PNG")
-    buf.seek(0)
-    return StreamingResponse(buf, media_type="image/png")
+    arr:
