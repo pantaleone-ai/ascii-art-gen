@@ -22,6 +22,6 @@
     "autoprefixer": "^10.4.16"
   },
   "optionalDependencies": {
-    "canvas": "^2.11.2"  // Use the latest version
+    "canvas": "^2.11.2"
   }
 }
