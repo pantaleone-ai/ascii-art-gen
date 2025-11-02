@@ -20,5 +20,8 @@
     "tailwindcss": "^3.4.10",
     "postcss": "^8.4.27",
     "autoprefixer": "^10.4.16"
+  },
+  "optionalDependencies": {
+    "canvas": "^2.11.2"  // Use the latest version
   }
 }
